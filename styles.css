@@ -100,11 +100,15 @@ table {
   margin-right: 0.5rem;
 }
 
-.space-y-6 > * + * {
+.space-y-6>*+* {
   margin-top: 1.5rem;
 }
 
-.space-y-2 > * + * {
+.space-y-4>*+* {
+  margin-top: 1rem;
+}
+
+.space-y-2>*+* {
   margin-top: 0.5rem;
 }
 
@@ -212,6 +216,10 @@ table {
   background-color: #e5e7eb;
 }
 
+.bg-gray-300 {
+  background-color: #d1d5db;
+}
+
 .bg-white {
   background-color: #ffffff;
 }
@@ -232,6 +240,10 @@ table {
   background-color: #ef4444;
 }
 
+.bg-yellow-50 {
+  background-color: #fefce8;
+}
+
 .hover\:bg-blue-700:hover {
   background-color: #1d4ed8;
 }
@@ -242,6 +254,10 @@ table {
 
 .hover\:bg-red-600:hover {
   background-color: #dc2626;
+}
+
+.hover\:bg-gray-300:hover {
+  background-color: #d1d5db;
 }
 
 .text-left {
@@ -316,6 +332,10 @@ table {
   color: #dc2626;
 }
 
+.text-yellow-700 {
+  color: #a16207;
+}
+
 .whitespace-pre-wrap {
   white-space: pre-wrap;
 }
@@ -335,7 +355,222 @@ table {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .md\:grid-cols-3 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
   .md\:w-auto {
     width: auto;
   }
+}
+
+/* NEW STYLES */
+
+.tab-bar {
+  display: flex;
+  border-bottom: 2px solid #d1d5db;
+  gap: 0;
+}
+
+.tab-btn {
+  padding: 0.5rem 1.5rem;
+  font-weight: 600;
+  color: #6b7280;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.tab-btn:hover {
+  color: #111827;
+}
+
+.tab-btn-active {
+  color: #2563eb;
+  border-bottom-color: #2563eb;
+}
+
+.tab-content {
+  /* hidden class handles visibility */
+}
+
+.contradiction-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+
+.contradiction-header .header-col {
+  flex: 1;
+  min-width: 0;
+}
+
+.contradiction-header .arrow-placeholder,
+.contradiction-row .arrow {
+  width: 1.25rem;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.contradiction-header .btn-placeholder,
+.contradiction-row .row-btn-group {
+  width: 4.5rem;
+  display: flex;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.contradiction-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.contradiction-row select {
+  flex: 1;
+  min-width: 0;
+}
+
+.contradiction-row .arrow {
+  color: #6b7280;
+  font-weight: 600;
+}
+
+.btn-add-row {
+  width: 2rem;
+  height: 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.25rem;
+  border: 1px solid #d1d5db;
+  background: #ecfdf5;
+  color: #16a34a;
+  font-size: 1.25rem;
+  font-weight: 700;
+  cursor: pointer;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.btn-add-row:hover {
+  background: #dcfce7;
+}
+
+.btn-remove-row {
+  width: 2rem;
+  height: 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.25rem;
+  border: 1px solid #d1d5db;
+  background: #fef2f2;
+  color: #dc2626;
+  font-size: 1.25rem;
+  font-weight: 700;
+  cursor: pointer;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.btn-remove-row:hover {
+  background: #fee2e2;
+}
+
+.policy-cards {
+  display: flex;
+  gap: 1rem;
+}
+
+.policy-card {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.75rem 1rem;
+  border: 2px solid #d1d5db;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: border-color 0.15s, background-color 0.15s;
+}
+
+.policy-card:hover {
+  border-color: #93c5fd;
+}
+
+.policy-card-selected {
+  border-color: #2563eb;
+  background-color: #eff6ff;
+}
+
+.policy-radio {
+  display: none;
+}
+
+.policy-card-title {
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.policy-card-desc {
+  font-size: 0.75rem;
+  color: #6b7280;
+}
+
+.badge {
+  display: inline-block;
+  padding: 0.125rem 0.5rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.badge-ready {
+  background-color: #dcfce7;
+  color: #166534;
+}
+
+.badge-incomplete {
+  background-color: #fef3c7;
+  color: #92400e;
+}
+
+.badge-blocked {
+  background-color: #fef2f2;
+  color: #991b1b;
+}
+
+.badge-missing {
+  background-color: #fef3c7;
+  color: #92400e;
+}
+
+.validation-ready {
+  border-color: #86efac;
+  background-color: #f0fdf4;
+  color: #166534;
+}
+
+.validation-blocked {
+  border-color: #fca5a5;
+  background-color: #fef2f2;
+  color: #991b1b;
+}
+
+.validation-incomplete {
+  border-color: #fcd34d;
+  background-color: #fffbeb;
+  color: #92400e;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }

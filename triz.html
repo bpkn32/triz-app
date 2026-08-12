@@ -4,213 +4,193 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>TRIZ Problem Solver</title>
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src https://cold-surf-b603.citetic.workers.dev; script-src 'self'; style-src 'self'; img-src 'self' data: https:; base-uri 'none'; form-action 'none'">
+  <title>TRIZ Research Interface</title>
+  <meta http-equiv="Content-Security-Policy"
+    content="default-src 'self'; connect-src https://cold-surf-b603.citetic.workers.dev; script-src 'self'; style-src 'self'; img-src 'self' data: https:; base-uri 'none'; form-action 'none'">
   <link rel="stylesheet" href="styles.css" />
 </head>
 
 <body class="bg-gray-100 text-gray-900">
   <div class="container mx-auto max-w-4xl p-6 space-y-6">
-    <h1 class="text-3xl font-bold text-center">TRIZ Problem Solver</h1>
+    <h1 class="text-3xl font-bold text-center">TRIZ Research Interface</h1>
 
-    <!-- 1. Problem definition -->
-    <div>
-      <label for="problem" class="block font-semibold mb-1">1. Problem Definition</label>
-      <textarea id="problem" rows="3" placeholder="Describe the engineering problem"
-        class="w-full p-2 rounded border"></textarea>
-      <p class="mt-2 text-xs text-gray-600">Submissions are sent to third-party AI model providers through the Cloudflare Worker. Do not enter confidential, regulated, or safety-critical details. Generated ideas are conceptual and require qualified engineering review.</p>
-    </div>
+    <!-- Global Settings Section -->
+    <div class="bg-white border rounded p-4 space-y-4">
+      <h2 class="text-lg font-semibold">Experiment Settings</h2>
 
-    <div>
-      <label for="api-token" class="block font-semibold mb-1">API Access Token</label>
-      <input id="api-token" type="password" autocomplete="off" placeholder="Enter the private Worker access token"
-        class="w-full p-2 rounded border" />
-      <p class="mt-2 text-xs text-gray-600">The token is kept in this browser session and sent only to the Cloudflare Worker.</p>
-    </div>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <!-- Case ID -->
+        <div>
+          <label for="case-id" class="block font-semibold mb-1">Case ID</label>
+          <input id="case-id" type="text" placeholder="e.g. AM_CPU_FAN_01" class="w-full p-2 rounded border" />
+        </div>
 
-    <!-- 2–3. Parameters (Optional) -->
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-      <!-- Improvement -->
-      <div>
-        <label for="improve" class="block font-semibold mb-1">2. Improvement Parameters (Optional)</label>
-        <select id="improve" multiple size="10" class="w-full p-2 rounded border">
-          <!-- 39 classic parameters -->
-          <option value="Weight of moving object">1 – Weight of moving object</option>
-          <option value="Weight of stationary object">2 – Weight of stationary object</option>
-          <option value="Length of moving object">3 – Length of moving object</option>
-          <option value="Length of stationary object">4 – Length of stationary object</option>
-          <option value="Area of moving object">5 – Area of moving object</option>
-          <option value="Area of stationary object">6 – Area of stationary object</option>
-          <option value="Volume of moving object">7 – Volume of moving object</option>
-          <option value="Volume of stationary object">8 – Volume of stationary object</option>
-          <option value="Speed">9 – Speed</option>
-          <option value="Force">10 – Force</option>
-          <option value="Stress or pressure">11 – Stress / Pressure</option>
-          <option value="Shape">12 – Shape</option>
-          <option value="Stability of object">13 – Stability of object</option>
-          <option value="Strength">14 – Strength</option>
-          <option value="Duration of action of moving object">15 – Duration of action (moving)</option>
-          <option value="Duration of action of stationary object">16 – Duration of action (stationary)</option>
-          <option value="Temperature">17 – Temperature</option>
-          <option value="Heat transmission">18 – Heat transmission</option>
-          <option value="Amount of substance">19 – Amount of substance</option>
-          <option value="Strength of noise">20 – Strength of noise</option>
-          <option value="Strength of light">21 – Strength of light</option>
-          <option value="Use of energy by object">22 – Use of energy by object</option>
-          <option value="Use of energy by moving object">23 – Use of energy by moving object</option>
-          <option value="Loss of energy">24 – Loss of energy</option>
-          <option value="Loss of substance">25 – Loss of substance</option>
-          <option value="Loss of information">26 – Loss of information</option>
-          <option value="Reliability">27 – Reliability</option>
-          <option value="Accuracy of measurement">28 – Accuracy of measurement</option>
-          <option value="Accuracy of production">29 – Accuracy of production</option>
-          <option value="Harmful factors acting on object">30 – Harmful factors acting on object</option>
-          <option value="Harmful factors generated by object">31 – Harmful factors generated by object</option>
-          <option value="Ease of manufacture">32 – Ease of manufacture</option>
-          <option value="Ease of operation">33 – Ease of operation</option>
-          <option value="Ease of repair">34 – Ease of repair</option>
-          <option value="Adaptability">35 – Adaptability</option>
-          <option value="Complexity of device">36 – Complexity of device</option>
-          <option value="Complexity of control">37 – Complexity of control</option>
-          <option value="Level of automation">38 – Level of automation</option>
-          <option value="Productivity">39 – Productivity</option>
-        </select>
+        <!-- Seed (optional) -->
+        <div>
+          <label for="seed" class="block font-semibold mb-1">Seed (optional)</label>
+          <input id="seed" type="text" inputmode="numeric" placeholder="Blank = no seed"
+            class="w-full p-2 rounded border" />
+        </div>
+
+        <!-- API Token -->
+        <div>
+          <label for="api-token" class="block font-semibold mb-1">API Access Token</label>
+          <input id="api-token" type="password" autocomplete="off" placeholder="Worker access token"
+            class="w-full p-2 rounded border" />
+        </div>
       </div>
-      <!-- Worsening -->
-      <div>
-        <label for="worsen" class="block font-semibold mb-1">3. Worsening Parameters (Optional)</label>
-        <select id="worsen" multiple size="10" class="w-full p-2 rounded border">
-          <!-- 39 TRIZ parameters again -->
-          <option value="Weight of moving object">1 – Weight of moving object</option>
-          <option value="Weight of stationary object">2 – Weight of stationary object</option>
-          <option value="Length of moving object">3 – Length of moving object</option>
-          <option value="Length of stationary object">4 – Length of stationary object</option>
-          <option value="Area of moving object">5 – Area of moving object</option>
-          <option value="Area of stationary object">6 – Area of stationary object</option>
-          <option value="Volume of moving object">7 – Volume of moving object</option>
-          <option value="Volume of stationary object">8 – Volume of stationary object</option>
-          <option value="Speed">9 – Speed</option>
-          <option value="Force">10 – Force</option>
-          <option value="Stress or pressure">11 – Stress / Pressure</option>
-          <option value="Shape">12 – Shape</option>
-          <option value="Stability of object">13 – Stability of object</option>
-          <option value="Strength">14 – Strength</option>
-          <option value="Duration of action of moving object">15 – Duration of action (moving)</option>
-          <option value="Duration of action of stationary object">16 – Duration of action (stationary)</option>
-          <option value="Temperature">17 – Temperature</option>
-          <option value="Heat transmission">18 – Heat transmission</option>
-          <option value="Amount of substance">19 – Amount of substance</option>
-          <option value="Strength of noise">20 – Strength of noise</option>
-          <option value="Strength of light">21 – Strength of light</option>
-          <option value="Use of energy by object">22 – Use of energy by object</option>
-          <option value="Use of energy by moving object">23 – Use of energy by moving object</option>
-          <option value="Loss of energy">24 – Loss of energy</option>
-          <option value="Loss of substance">25 – Loss of substance</option>
-          <option value="Loss of information">26 – Loss of information</option>
-          <option value="Reliability">27 – Reliability</option>
-          <option value="Accuracy of measurement">28 – Accuracy of measurement</option>
-          <option value="Accuracy of production">29 – Accuracy of production</option>
-          <option value="Harmful factors acting on object">30 – Harmful factors acting on object</option>
-          <option value="Harmful factors generated by object">31 – Harmful factors generated by object</option>
-          <option value="Ease of manufacture">32 – Ease of manufacture</option>
-          <option value="Ease of operation">33 – Ease of operation</option>
-          <option value="Ease of repair">34 – Ease of repair</option>
-          <option value="Adaptability">35 – Adaptability</option>
-          <option value="Complexity of device">36 – Complexity of device</option>
-          <option value="Complexity of control">37 – Complexity of control</option>
-          <option value="Level of automation">38 – Level of automation</option>
-          <option value="Productivity">39 – Productivity</option>
-        </select>
+
+      <!-- Fixed settings display -->
+      <div class="flex gap-4 text-sm text-gray-600">
+        <span>Reasoning Effort: <strong>Medium</strong></span>
+        <span>Max Output Tokens: <strong>2500</strong></span>
+      </div>
+
+      <p class="text-xs text-gray-600">Submissions are sent to third-party AI model providers through the Cloudflare
+        Worker. Do not enter confidential, regulated, or safety-critical details.</p>
+    </div>
+
+    <!-- Tab Navigation -->
+    <div class="tab-bar">
+      <button id="tab-btn-solve" class="tab-btn tab-btn-active" data-tab="solve">Solution Generation</button>
+      <button id="tab-btn-identify" class="tab-btn" data-tab="identify">Contradiction Identification</button>
+    </div>
+
+    <!-- TAB 1: Solution Generation -->
+    <div id="tab-solve" class="tab-content">
+
+      <!-- 1. Problem Definition A -->
+      <div class="space-y-4">
+        <div>
+          <label for="problem-a" class="block font-semibold mb-1">1. Problem Definition A</label>
+          <textarea id="problem-a" rows="4" placeholder="Neutral pre-TRIZ technical problem definition"
+            class="w-full p-2 rounded border"></textarea>
+        </div>
+
+        <!-- 2. Contradictions -->
+        <div>
+          <label class="block font-semibold mb-1">2. Contradictions</label>
+          <div class="contradiction-header">
+            <span class="w-8 flex-shrink-0"></span>
+            <span class="header-col text-green-700">Improving Parameter</span>
+            <span class="arrow-placeholder"></span>
+            <span class="header-col text-red-700">Worsening Parameter</span>
+            <span class="btn-placeholder"></span>
+          </div>
+          <div id="contradictions-container" class="space-y-2">
+            <!-- Dynamic rows inserted by app.js -->
+          </div>
+        </div>
+
+        <!-- 3. Corresponding TRIZ Principles -->
+        <div>
+          <label class="block font-semibold mb-1">3. Corresponding TRIZ Principles</label>
+          <div id="principles-union-container">
+            <table id="principles-union-table" class="w-full text-sm border-collapse border border-gray-300">
+              <thead>
+                <tr class="bg-gray-200">
+                  <th class="p-2 border border-gray-300 text-left">ID</th>
+                  <th class="p-2 border border-gray-300 text-left">Principle</th>
+                  <th class="p-2 border border-gray-300 text-left">Canonical Description</th>
+                </tr>
+              </thead>
+              <tbody id="principles-union-body">
+                <!-- Populated dynamically by app.js -->
+              </tbody>
+            </table>
+            <p id="principles-union-empty" class="text-sm text-gray-500 mt-1">Add contradiction pairs above to see
+              candidate principles.</p>
+          </div>
+        </div>
+
+        <!-- 4. Principle Selection Policy -->
+        <div>
+          <label class="block font-semibold mb-1">4. Principle Selection Policy</label>
+          <div class="policy-cards">
+            <label class="policy-card policy-card-selected" id="policy-card-parsimonious">
+              <input type="radio" name="selection-policy" value="parsimonious" checked class="policy-radio" />
+              <span class="policy-card-title">Parsimonious Selection</span>
+              <span class="policy-card-desc">Prefer fewer principles when equally effective</span>
+            </label>
+            <label class="policy-card" id="policy-card-minimal">
+              <input type="radio" name="selection-policy" value="minimal" class="policy-radio" />
+              <span class="policy-card-title">Minimal Principle Use</span>
+              <span class="policy-card-desc">Smallest sufficient subset for full coverage</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Reference Data Validation Status -->
+        <div id="validation-status" class="hidden p-3 rounded border text-sm"></div>
+
+        <!-- 5. Generate Solutions -->
+        <button id="btn-solve" class="w-full bg-green-600 text-white px-4 py-2 rounded shadow hover:bg-green-700"
+          disabled>
+          5. Generate Solutions from All Models
+        </button>
+
+        <!-- Solution Results -->
+        <div id="solve-results" class="bg-white border rounded p-4 shadow-inner hidden">
+          <h3 class="text-lg font-semibold mb-3">Solutions from All Models</h3>
+          <table class="w-full border-collapse border border-gray-300">
+            <thead>
+              <tr class="bg-gray-100">
+                <th class="border border-gray-300 p-2 text-left">Model</th>
+                <th class="border border-gray-300 p-2 text-left">Response</th>
+                <th class="border border-gray-300 p-2 text-left">Status</th>
+              </tr>
+            </thead>
+            <tbody id="solve-results-body"></tbody>
+          </table>
+        </div>
       </div>
     </div>
 
-    <!-- 4. Show principles button -->
-    <button id="btn-matrix" class="w-full md:w-auto bg-blue-600 text-white px-4 py-2 rounded shadow hover:bg-blue-700">
-      4. Show Contradiction Matrix Principles
-    </button>
-    <div id="matrix-container" class="overflow-x-auto hidden">
-      <table id="matrixTable" class="min-w-full text-sm text-left border border-gray-300 mt-4"></table>
-    </div>
+    <!-- TAB 2: Contradiction Identification -->
+    <div id="tab-identify" class="tab-content hidden">
+      <div class="space-y-4">
+        <!-- 1. Problem Definition B -->
+        <div>
+          <label for="problem-b" class="block font-semibold mb-1">1. Problem Definition B</label>
+          <textarea id="problem-b" rows="4" placeholder="Pre-TRIZ technical problem narrative with natural trade-offs"
+            class="w-full p-2 rounded border"></textarea>
+        </div>
 
-    <!-- NEW/MODIFIED SECTION START -->
-    <!-- 5. Select/Refine Principles -->
-    <div>
-      <label for="principles-select" class="block font-semibold mb-1">5. Select/Refine Principles (Ctrl+Click to
-        multi-select)</label>
-      <select id="principles-select" multiple size="10" class="w-full p-2 rounded border bg-white">
-        <option value="Segmentation">1. Segmentation</option>
-        <option value="Taking out">2. Taking out (Extraction)</option>
-        <option value="Local quality">3. Local quality</option>
-        <option value="Asymmetry">4. Asymmetry</option>
-        <option value="Merging">5. Merging</option>
-        <option value="Universality">6. Universality</option>
-        <option value="Nested doll">7. Nested doll (Matryoshka)</option>
-        <option value="Anti-weight">8. Anti-weight</option>
-        <option value="Preliminary anti-action">9. Preliminary anti-action</option>
-        <option value="Preliminary action">10. Preliminary action</option>
-        <option value="Beforehand cushioning">11. Beforehand cushioning</option>
-        <option value="Equipotentiality">12. Equipotentiality</option>
-        <option value="The other way round">13. The other way round</option>
-        <option value="Spheroidality - Curvature">14. Spheroidality - Curvature</option>
-        <option value="Dynamics">15. Dynamics</option>
-        <option value="Partial or excessive actions">16. Partial or excessive actions</option>
-        <option value="Another dimension">17. Another dimension</option>
-        <option value="Mechanical vibration">18. Mechanical vibration</option>
-        <option value="Periodic action">19. Periodic action</option>
-        <option value="Continuity of useful action">20. Continuity of useful action</option>
-        <option value="Skipping">21. Skipping</option>
-        <option value="Blessing in disguise">22. Blessing in disguise</option>
-        <option value="Feedback">23. Feedback</option>
-        <option value="Intermediary">24. Intermediary</option>
-        <option value="Self-service">25. Self-service</option>
-        <option value="Copying">26. Copying</option>
-        <option value="Cheap short-living objects">27. Cheap short-living objects</option>
-        <option value="Mechanics substitution">28. Mechanics substitution</option>
-        <option value="Pneumatics and hydraulics">29. Pneumatics and hydraulics</option>
-        <option value="Flexible shells and thin films">30. Flexible shells and thin films</option>
-        <option value="Porous materials">31. Porous materials</option>
-        <option value="Color changes">32. Color changes</option>
-        <option value="Homogeneity">33. Homogeneity</option>
-        <option value="Discarding and recovering">34. Discarding and recovering</option>
-        <option value="Parameter changes">35. Parameter changes</option>
-        <option value="Phase transitions">36. Phase transitions</option>
-        <option value="Thermal expansion">37. Thermal expansion</option>
-        <option value="Strong oxidants">38. Strong oxidants</option>
-        <option value="Inert atmosphere">39. Inert atmosphere</option>
-        <option value="Composite materials">40. Composite materials</option>
-      </select>
-    </div>
-    <!-- NEW/MODIFIED SECTION END -->
+        <!-- 2. Identify Contradictions -->
+        <button id="btn-identify" class="w-full bg-blue-600 text-white px-4 py-2 rounded shadow hover:bg-blue-700">
+          2. Identify Contradictions from All Models
+        </button>
 
-    <!-- 6. Model selection (removed - will use all models automatically) -->
-
-    <!-- 7. Generate solution button -->
-    <button id="btn-solve" class="w-full bg-green-600 text-white px-4 py-2 rounded shadow hover:bg-green-700">
-      7. Generate Solutions from All Models
-    </button>
-
-    <!-- 8. Solution output -->
-    <div id="solution" class="bg-white border rounded p-4 shadow-inner">
-      <div id="solution-table" class="hidden">
-        <h3 class="text-lg font-semibold mb-3">Solutions from All Models</h3>
-        <table class="w-full border-collapse border border-gray-300">
-          <thead>
-            <tr class="bg-gray-100">
-              <th class="border border-gray-300 p-2 text-left">Model</th>
-              <th class="border border-gray-300 p-2 text-left">Solution</th>
-              <th class="border border-gray-300 p-2 text-left">Status</th>
-            </tr>
-          </thead>
-          <tbody id="solution-table-body">
-          </tbody>
-        </table>
+        <!-- Identification Results -->
+        <div id="identify-results" class="bg-white border rounded p-4 shadow-inner hidden">
+          <h3 class="text-lg font-semibold mb-3">Identified Contradictions by Model</h3>
+          <table class="w-full border-collapse border border-gray-300">
+            <thead>
+              <tr class="bg-gray-100">
+                <th class="border border-gray-300 p-2 text-left">Model</th>
+                <th class="border border-gray-300 p-2 text-left">Contradictions</th>
+                <th class="border border-gray-300 p-2 text-left">Status</th>
+              </tr>
+            </thead>
+            <tbody id="identify-results-body"></tbody>
+          </table>
+        </div>
       </div>
-      <div id="solution-text" class="whitespace-pre-wrap"></div>
     </div>
+
+    <!-- Export -->
+    <div class="flex gap-4 items-center">
+      <button id="btn-export-jsonl"
+        class="px-4 py-2 bg-gray-200 text-gray-900 rounded shadow hover:bg-gray-300 text-sm">
+        Export Research Log (JSONL)
+      </button>
+      <span id="log-count" class="text-xs text-gray-500"></span>
+    </div>
+
     <p class="text-center text-xs text-gray-500 mt-8">Powered by Alara Tarrier, Berk Pişkin and Sabri Erdem</p>
   </div>
 
-  <script src="app.js" defer></script>
+  <script type="module" src="app.js"></script>
 </body>
 
 </html>

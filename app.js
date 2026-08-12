@@ -1,358 +1,921 @@
-    // Cloudflare Worker endpoint
-    const WORKER_ORIGIN = "https://cold-surf-b603.citetic.workers.dev";
+// ============================================================================
+// app.js — TRIZ Research Interface (Frontend Application Logic)
+// ============================================================================
+//
+// Imports reference data authoritatively from triz-data.js.
+// Manages:
+//   - Tab switching (Solution Generation / Contradiction Identification)
+//   - Case ID, Seed, API token state
+//   - Dynamic contradiction-pair rows
+//   - Reactive union preview & case-readiness validation
+//   - Task 1 (Solution Generation) & Task 2 (Contradiction Identification) flows
+//   - IndexedDB research log storage & JSONL export
+// ============================================================================
 
-    const matrixContainer = document.getElementById("matrix-container");
-    const matrixTable = document.getElementById("matrixTable");
-    const solutionTable = document.getElementById("solution-table");
-    const solutionTableBody = document.getElementById("solution-table-body");
-    const solutionText = document.getElementById("solution-text");
-    const principlesSelect = document.getElementById("principles-select");
-    const apiTokenInput = document.getElementById("api-token");
+import {
+  TRIZ_PARAMETERS,
+  TRIZ_PRINCIPLES,
+  getPrinciplesForContradiction,
+  getPrincipleById,
+  computeCandidateUnion,
+  validateReferenceData
+} from "./triz-data.js";
 
-    apiTokenInput.value = sessionStorage.getItem("triz-api-token") || "";
-    apiTokenInput.addEventListener("input", () => {
-      sessionStorage.setItem("triz-api-token", apiTokenInput.value.trim());
-    });
+// Cloudflare Worker Origin
+const WORKER_ORIGIN = "https://cold-surf-b603.citetic.workers.dev";
 
-    const ALL_MODELS = {
-      "openai/gpt-5.4-mini": "GPT-5.4-mini",
-      "google/gemini-3.6-flash": "Gemini 3.6 Flash",
-      "anthropic/claude-sonnet-5": "Claude Sonnet 5",
-      "x-ai/grok-4.5": "Grok 4.5",
+// Models used for parallel research runs
+const ALL_MODELS = {
+  "openai/gpt-5.4-mini": "GPT-5.4-mini",
+  "google/gemini-3.6-flash": "Gemini 3.6 Flash",
+  "anthropic/claude-sonnet-5": "Claude Sonnet 5",
+  "x-ai/grok-4.5": "Grok 4.5"
+};
+
+// ============================================================================
+// 1. DOM Element References
+// ============================================================================
+
+const caseIdInput = document.getElementById("case-id");
+const seedInput = document.getElementById("seed");
+const apiTokenInput = document.getElementById("api-token");
+
+const tabBtnSolve = document.getElementById("tab-btn-solve");
+const tabBtnIdentify = document.getElementById("tab-btn-identify");
+const tabSolve = document.getElementById("tab-solve");
+const tabIdentify = document.getElementById("tab-identify");
+
+const problemATextarea = document.getElementById("problem-a");
+const problemBTextarea = document.getElementById("problem-b");
+
+const contradictionsContainer = document.getElementById("contradictions-container");
+const principlesUnionBody = document.getElementById("principles-union-body");
+const principlesUnionEmpty = document.getElementById("principles-union-empty");
+
+const policyCardParsimonious = document.getElementById("policy-card-parsimonious");
+const policyCardMinimal = document.getElementById("policy-card-minimal");
+
+const validationStatusBanner = document.getElementById("validation-status");
+const btnSolve = document.getElementById("btn-solve");
+const btnIdentify = document.getElementById("btn-identify");
+
+const solveResults = document.getElementById("solve-results");
+const solveResultsBody = document.getElementById("solve-results-body");
+const identifyResults = document.getElementById("identify-results");
+const identifyResultsBody = document.getElementById("identify-results-body");
+
+const btnExportJsonl = document.getElementById("btn-export-jsonl");
+const logCountSpan = document.getElementById("log-count");
+
+// ============================================================================
+// 2. Application State
+// ============================================================================
+
+let currentTab = "solve"; // "solve" | "identify"
+let contradictionRows = []; // [{ id: "C1", improvingId: 0, worseningId: 0 }]
+let rowCounter = 0;
+let selectionPolicy = "parsimonious"; // "parsimonious" | "minimal"
+let modelStatuses = new Map();
+
+// API Token handling via sessionStorage
+apiTokenInput.value = sessionStorage.getItem("triz-api-token") || "";
+apiTokenInput.addEventListener("input", () => {
+  sessionStorage.setItem("triz-api-token", apiTokenInput.value.trim());
+});
+
+// ============================================================================
+// 3. IndexedDB Persistent Research Logging
+// ============================================================================
+
+const DB_NAME = "triz-research-log";
+const DB_VERSION = 1;
+const STORE_NAME = "entries";
+
+function openLogDb() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
+    request.onupgradeneeded = (e) => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains(STORE_NAME)) {
+        const store = db.createObjectStore(STORE_NAME, { keyPath: "id", autoIncrement: true });
+        store.createIndex("caseId", "caseId", { unique: false });
+        store.createIndex("timestamp", "timestamp", { unique: false });
+        store.createIndex("taskType", "taskType", { unique: false });
+      }
     };
+    request.onsuccess = (e) => resolve(e.target.result);
+    request.onerror = (e) => reject(e.target.error);
+  });
+}
 
-    const PRINCIPLES = [
-      "Segmentation",
-      "Taking out",
-      "Local quality",
-      "Asymmetry",
-      "Merging",
-      "Universality",
-      "Nested doll",
-      "Anti-weight",
-      "Preliminary anti-action",
-      "Preliminary action",
-      "Beforehand cushioning",
-      "Equipotentiality",
-      "The other way round",
-      "Spheroidality - Curvature",
-      "Dynamics",
-      "Partial or excessive actions",
-      "Another dimension",
-      "Mechanical vibration",
-      "Periodic action",
-      "Continuity of useful action",
-      "Skipping",
-      "Blessing in disguise",
-      "Feedback",
-      "Intermediary",
-      "Self-service",
-      "Copying",
-      "Cheap short-living objects",
-      "Mechanics substitution",
-      "Pneumatics and hydraulics",
-      "Flexible shells and thin films",
-      "Porous materials",
-      "Color changes",
-      "Homogeneity",
-      "Discarding and recovering",
-      "Parameter changes",
-      "Phase transitions",
-      "Thermal expansion",
-      "Strong oxidants",
-      "Inert atmosphere",
-      "Composite materials",
-    ];
+async function saveLogEntry(entry) {
+  try {
+    const db = await openLogDb();
+    const tx = db.transaction(STORE_NAME, "readwrite");
+    const store = tx.objectStore(STORE_NAME);
+    await new Promise((resolve, reject) => {
+      const req = store.add(entry);
+      req.onsuccess = resolve;
+      req.onerror = reject;
+    });
+    updateLogCountDisplay();
+  } catch (err) {
+    console.error("Failed to save research log entry to IndexedDB:", err);
+  }
+}
 
-    const principleByName = new Map(PRINCIPLES.map((name, index) => [name, { id: index + 1, name }]));
-    const modelStatuses = new Map();
+async function getAllLogEntries() {
+  try {
+    const db = await openLogDb();
+    const tx = db.transaction(STORE_NAME, "readonly");
+    const store = tx.objectStore(STORE_NAME);
+    return await new Promise((resolve, reject) => {
+      const req = store.getAll();
+      req.onsuccess = () => resolve(req.result || []);
+      req.onerror = reject;
+    });
+  } catch (err) {
+    console.error("Failed to read research log entries from IndexedDB:", err);
+    return [];
+  }
+}
 
-    function clearElement(element) {
-      element.replaceChildren();
-    }
+async function updateLogCountDisplay() {
+  const entries = await getAllLogEntries();
+  logCountSpan.textContent = `Log entries: ${entries.length}`;
+}
 
-    function appendText(parent, text, className = "") {
-      const node = document.createElement("div");
-      if (className) node.className = className;
-      node.textContent = text;
-      parent.appendChild(node);
-      return node;
-    }
+// ============================================================================
+// 4. Tab Navigation
+// ============================================================================
 
-    function setStatus(statusCell, status, className) {
-      statusCell.dataset.status = status;
-      clearElement(statusCell);
-      appendText(statusCell, status === "completed" ? "Completed" : status === "failed" ? "Failed" : "Processing", className);
-    }
+function switchTab(targetTab) {
+  currentTab = targetTab;
+  if (targetTab === "solve") {
+    tabBtnSolve.classList.add("tab-btn-active");
+    tabBtnIdentify.classList.remove("tab-btn-active");
+    tabSolve.classList.remove("hidden");
+    tabIdentify.classList.add("hidden");
+  } else {
+    tabBtnIdentify.classList.add("tab-btn-active");
+    tabBtnSolve.classList.remove("tab-btn-active");
+    tabIdentify.classList.remove("hidden");
+    tabSolve.classList.add("hidden");
+  }
+}
 
-    async function postJson(path, payload, timeoutMs = 120000) {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-      const headers = { "Content-Type": "application/json" };
-      const apiToken = apiTokenInput.value.trim();
-      if (apiToken) headers["x-triz-api-token"] = apiToken;
-      try {
-        const res = await fetch(`${WORKER_ORIGIN}${path}`, {
-          method: "POST",
-          headers,
-          body: JSON.stringify(payload),
-          signal: controller.signal
-        });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok || data.error) {
-          throw new Error(data.error || `Request failed with status ${res.status}`);
-        }
-        return data;
-      } finally {
-        clearTimeout(timeoutId);
-      }
-    }
+tabBtnSolve.addEventListener("click", () => switchTab("solve"));
+tabBtnIdentify.addEventListener("click", () => switchTab("identify"));
 
-    function createLoading(cell) {
-      clearElement(cell);
-      const wrapper = document.createElement("div");
-      wrapper.className = "flex items-center";
+// ============================================================================
+// 5. Principle Selection Policy Controls
+// ============================================================================
 
-      const spinner = document.createElement("div");
-      spinner.className = "animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600 mr-2";
-      wrapper.appendChild(spinner);
+function setSelectionPolicy(policy) {
+  selectionPolicy = policy;
+  if (policy === "parsimonious") {
+    policyCardParsimonious.classList.add("policy-card-selected");
+    policyCardMinimal.classList.remove("policy-card-selected");
+    policyCardParsimonious.querySelector("input").checked = true;
+  } else {
+    policyCardMinimal.classList.add("policy-card-selected");
+    policyCardParsimonious.classList.remove("policy-card-selected");
+    policyCardMinimal.querySelector("input").checked = true;
+  }
+}
 
-      const label = document.createElement("span");
-      label.className = "text-gray-500";
-      label.textContent = "Generating...";
-      wrapper.appendChild(label);
+policyCardParsimonious.addEventListener("click", () => setSelectionPolicy("parsimonious"));
+policyCardMinimal.addEventListener("click", () => setSelectionPolicy("minimal"));
 
-      cell.appendChild(wrapper);
-    }
+// ============================================================================
+// 6. Dynamic Contradiction Pair Rows
+// ============================================================================
 
-    function createRetryButton(modelId, modelName) {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "px-3 py-1 bg-red-500 text-white text-xs rounded hover:bg-red-600";
-      button.textContent = "Retry";
-      button.addEventListener("click", () => retryModel(modelId, modelName));
-      return button;
-    }
+function createParameterOptions() {
+  const defaultOpt = '<option value="0">-- Select Parameter --</option>';
+  const opts = TRIZ_PARAMETERS.map(
+    (p) => `<option value="${p.id}">${p.id}. ${p.name}</option>`
+  ).join("");
+  return defaultOpt + opts;
+}
 
-    function renderError(cell, modelId, modelName, errorMessage) {
-      clearElement(cell);
-      const wrapper = document.createElement("div");
-      wrapper.className = "text-red-600";
-      appendText(wrapper, "Request failed", "font-semibold");
-      const lowerMessage = String(errorMessage).toLowerCase();
-      const userMessage = lowerMessage.includes("too many requests")
-        ? "The rate limit was reached. Wait about one minute before retrying this model."
-        : lowerMessage.includes("timed out")
-          ? "The model took too long to respond. Gemini and other reasoning models can be slower; retry this model once."
-          : "The model could not complete this request. Please retry or choose different inputs.";
-      appendText(wrapper, userMessage, "text-sm mb-2");
-      appendText(wrapper, `Technical details: ${errorMessage}`, "text-xs text-gray-600 mb-2");
-      wrapper.appendChild(createRetryButton(modelId, modelName));
-      cell.appendChild(wrapper);
-    }
+function addContradictionRow(improvingId = 0, worseningId = 0) {
+  rowCounter += 1;
+  const rowId = `C${rowCounter}`;
 
-    function renderSolution(cell, data) {
-      clearElement(cell);
-      const wrapper = document.createElement("div");
-      wrapper.className = "max-h-40 overflow-y-auto space-y-2";
+  const rowDiv = document.createElement("div");
+  rowDiv.className = "contradiction-row";
+  rowDiv.dataset.rowId = rowId;
 
-      if (Array.isArray(data.principles) && data.principles.length > 0) {
-        appendText(wrapper, "Selected TRIZ Principles:", "font-semibold");
-        data.principles.forEach((principle) => {
-          const id = Number.isInteger(principle.id) ? `${principle.id}. ` : "";
-          appendText(wrapper, `${id}${principle.name || "Unnamed principle"}: ${principle.explanation || ""}`);
-        });
-      }
+  const label = document.createElement("span");
+  label.className = "text-sm font-medium text-gray-500 w-8 flex-shrink-0";
+  label.textContent = rowId;
 
-      appendText(wrapper, "Solution:", "font-semibold mt-2");
-      appendText(wrapper, data.solution || "");
-      cell.appendChild(wrapper);
-    }
+  const impSelect = document.createElement("select");
+  impSelect.className = "p-2 border rounded text-sm";
+  impSelect.innerHTML = createParameterOptions();
+  impSelect.value = String(improvingId);
 
-    function renderMatrix(principles) {
-      clearElement(matrixTable);
-      if (!principles?.length) {
-        const row = matrixTable.insertRow();
-        const cell = row.insertCell();
-        cell.className = "p-2";
-        cell.textContent = "No matching TRIZ principle found.";
+  const arrow = document.createElement("span");
+  arrow.className = "arrow";
+  arrow.textContent = "→";
+
+  const worSelect = document.createElement("select");
+  worSelect.className = "p-2 border rounded text-sm";
+  worSelect.innerHTML = createParameterOptions();
+  worSelect.value = String(worseningId);
+
+  const btnAdd = document.createElement("button");
+  btnAdd.type = "button";
+  btnAdd.className = "btn-add-row";
+  btnAdd.textContent = "+";
+  btnAdd.title = "Add contradiction row";
+  btnAdd.addEventListener("click", () => addContradictionRow());
+
+  const btnRemove = document.createElement("button");
+  btnRemove.type = "button";
+  btnRemove.className = "btn-remove-row";
+  btnRemove.textContent = "−";
+  btnRemove.title = "Remove contradiction row";
+  btnRemove.addEventListener("click", () => removeContradictionRow(rowDiv));
+
+  const btnGroup = document.createElement("div");
+  btnGroup.className = "row-btn-group";
+  btnGroup.appendChild(btnAdd);
+  btnGroup.appendChild(btnRemove);
+
+  rowDiv.appendChild(label);
+  rowDiv.appendChild(impSelect);
+  rowDiv.appendChild(arrow);
+  rowDiv.appendChild(worSelect);
+  rowDiv.appendChild(btnGroup);
+
+  contradictionsContainer.appendChild(rowDiv);
+
+  const rowObj = { id: rowId, element: rowDiv, impSelect, worSelect };
+  contradictionRows.push(rowObj);
+
+  impSelect.addEventListener("change", updateUnionAndValidation);
+  worSelect.addEventListener("change", updateUnionAndValidation);
+
+  updateRowButtons();
+  updateUnionAndValidation();
+}
+
+function removeContradictionRow(rowElement) {
+  if (contradictionRows.length <= 1) return; // Keep at least one row
+  contradictionRows = contradictionRows.filter((r) => r.element !== rowElement);
+  rowElement.remove();
+  renumberContradictionRows();
+  updateRowButtons();
+  updateUnionAndValidation();
+}
+
+function renumberContradictionRows() {
+  contradictionRows.forEach((r, idx) => {
+    const newId = `C${idx + 1}`;
+    r.id = newId;
+    r.element.dataset.rowId = newId;
+    r.element.querySelector("span").textContent = newId;
+  });
+}
+
+function updateRowButtons() {
+  const isOnlyOne = contradictionRows.length === 1;
+  contradictionRows.forEach((r) => {
+    const btnRemove = r.element.querySelector(".btn-remove-row");
+    btnRemove.style.display = isOnlyOne ? "none" : "flex";
+  });
+}
+
+function getSelectedContradictions() {
+  return contradictionRows
+    .map((r) => ({
+      id: r.id,
+      improvingParameterId: Number(r.impSelect.value),
+      worseningParameterId: Number(r.worSelect.value)
+    }))
+    .filter((c) => c.improvingParameterId > 0 && c.worseningParameterId > 0);
+}
+
+// ============================================================================
+// 7. Reactive Union Preview & Validation Status Display
+// ============================================================================
+
+function clearElement(el) {
+  el.replaceChildren();
+}
+
+function updateUnionAndValidation() {
+  const selectedContradictions = getSelectedContradictions();
+
+  // Clear union preview table
+  clearElement(principlesUnionBody);
+
+  if (selectedContradictions.length === 0) {
+    principlesUnionEmpty.classList.remove("hidden");
+    principlesUnionEmpty.textContent = "Select parameters for at least one contradiction pair above to see candidate principles.";
+    updateValidationStatus(null);
+    return;
+  }
+
+  // Compute mappings & union
+  const mappings = selectedContradictions.map((c) => {
+    const lookup = getPrinciplesForContradiction(c.improvingParameterId, c.worseningParameterId);
+    return {
+      contradictionId: c.id,
+      matrixPrinciples: lookup.principles,
+      status: lookup.status
+    };
+  });
+
+  const candidateIds = computeCandidateUnion(mappings);
+
+  if (candidateIds.length === 0) {
+    principlesUnionEmpty.classList.remove("hidden");
+    const hasMissingCell = mappings.some((m) => m.status === "matrix_data_missing");
+    principlesUnionEmpty.textContent = hasMissingCell
+      ? "One or more matrix cells have not yet been entered."
+      : "Selected contradiction pairs resulted in a verified empty candidate set.";
+  } else {
+    principlesUnionEmpty.classList.add("hidden");
+    candidateIds.forEach((id) => {
+      const p = getPrincipleById(id);
+      const row = principlesUnionBody.insertRow();
+
+      const idCell = row.insertCell();
+      idCell.className = "p-2 border border-gray-300 font-mono text-center";
+      idCell.textContent = String(id);
+
+      const nameCell = row.insertCell();
+      nameCell.className = "p-2 border border-gray-300 font-medium";
+      nameCell.textContent = p ? p.name : `Principle ${id}`;
+
+      const descCell = row.insertCell();
+      descCell.className = "p-2 border border-gray-300 text-xs";
+      if (p && Array.isArray(p.canonicalDescription) && p.canonicalDescription.length > 0) {
+        descCell.innerHTML = p.canonicalDescription.map((line) => `• ${line}`).join("<br>");
       } else {
-        const header = matrixTable.insertRow();
-        header.className = "bg-gray-200";
-        ["#", "Principle"].forEach((label) => {
-          const th = document.createElement("th");
-          th.className = "p-2 border";
-          th.textContent = label;
-          header.appendChild(th);
-        });
-
-        principles.forEach((principle) => {
-          const row = matrixTable.insertRow();
-          const idCell = row.insertCell();
-          idCell.className = "p-2 border";
-          idCell.textContent = Number.isInteger(principle.id) ? principle.id : "";
-
-          const nameCell = row.insertCell();
-          nameCell.className = "p-2 border";
-          nameCell.textContent = principle.name || "";
-        });
-      }
-      matrixContainer.classList.remove("hidden");
-
-      const principleNamesFromMatrix = principles.map(p => p.name);
-      Array.from(principlesSelect.options).forEach(option => {
-        option.selected = principleNamesFromMatrix.includes(option.value);
-      });
-    }
-
-    function getSelectedValues(selectId) {
-      return Array.from(document.getElementById(selectId).selectedOptions)
-        .map(option => option.value)
-        .filter(Boolean);
-    }
-
-    document.getElementById("btn-matrix").addEventListener("click", async () => {
-      const improve = getSelectedValues("improve");
-      const worsen = getSelectedValues("worsen");
-      if (improve.length === 0 || worsen.length === 0) {
-        alert("Please select both parameters to view the contradiction matrix, or leave them empty to skip matrix generation.");
-        return;
-      }
-
-      Array.from(principlesSelect.options).forEach(option => option.selected = false);
-      clearElement(matrixTable);
-      matrixContainer.classList.add("hidden");
-
-      const payload = {
-        improveParam: improve,
-        worsenParam: worsen,
-        model: "openai/gpt-5.4-mini" // Default model for matrix
-      };
-      try {
-        const data = await postJson("/matrix", payload);
-        renderMatrix(data.principles);
-      } catch (err) {
-        alert("Matrix error: " + err.message);
+        descCell.innerHTML = '<span class="text-amber-600 italic">Canonical description not yet provided</span>';
       }
     });
+  }
 
-    async function processModel(modelId, modelName, problem, improve, worsen, manualPrinciples) {
-      const solutionCellId = `solution-${modelId.replace(/[^a-zA-Z0-9]/g, '-')}`;
-      const statusCellId = `status-${modelId.replace(/[^a-zA-Z0-9]/g, '-')}`;
-      const solutionCell = document.getElementById(solutionCellId);
-      const statusCell = document.getElementById(statusCellId);
+  // Validate case-specific readiness
+  const valResult = validateReferenceData(selectedContradictions);
+  updateValidationStatus(valResult);
+}
 
-      createLoading(solutionCell);
-      setStatus(statusCell, "processing", "text-blue-600");
-      modelStatuses.set(modelId, "processing");
+function updateValidationStatus(valResult) {
+  if (!valResult || !valResult.case) {
+    validationStatusBanner.classList.add("hidden");
+    btnSolve.disabled = true;
+    return;
+  }
 
-      try {
-        const payload = {
-          problem,
-          improveParam: improve || null,
-          worsenParam: worsen || null,
-          manualPrinciples: manualPrinciples,
-          model: modelId
-        };
+  const { case: caseVal } = valResult;
+  validationStatusBanner.classList.remove("hidden");
 
-        const data = await postJson("/solve", payload);
-        renderSolution(solutionCell, data);
-        setStatus(statusCell, "completed", "text-green-600");
-        modelStatuses.set(modelId, "completed");
-      } catch (err) {
-        renderError(solutionCell, modelId, modelName, err.name === "AbortError" ? "Request timed out" : err.message);
-        setStatus(statusCell, "failed", "text-red-600");
-        modelStatuses.set(modelId, "failed");
-      }
-    }
+  if (caseVal.researchReady) {
+    validationStatusBanner.className = "p-3 rounded border text-sm validation-ready";
+    validationStatusBanner.innerHTML = `
+      <strong>Research Status: READY</strong><br>
+      All required matrix cells are present (${caseVal.candidatePrincipleCount} candidate principles derived).
+      All required canonical descriptions are provided.
+    `;
+    btnSolve.disabled = false;
+  } else {
+    validationStatusBanner.className = "p-3 rounded border text-sm validation-blocked";
+    let issuesHtml = caseVal.issues.map((i) => `• ${i}`).join("<br>");
+    validationStatusBanner.innerHTML = `
+      <strong>Research Status: BLOCKED — Case reference data incomplete</strong><br>
+      Solution generation is disabled until required reference data is entered:<br>
+      ${issuesHtml}
+    `;
+    btnSolve.disabled = true;
+  }
+}
 
-    async function retryModel(modelId, modelName) {
-      const problem = document.getElementById("problem").value.trim();
-      const improve = getSelectedValues("improve");
-      const worsen = getSelectedValues("worsen");
-      const manualPrinciples = getSelectedPrinciples();
+// ============================================================================
+// 8. API Communication Helper
+// ============================================================================
 
-      await processModel(modelId, modelName, problem, improve, worsen, manualPrinciples);
-      renderSummary();
-    }
+async function postJson(path, payload, timeoutMs = 120000) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  const headers = { "Content-Type": "application/json" };
+  const apiToken = apiTokenInput.value.trim();
+  if (apiToken) headers["x-triz-api-token"] = apiToken;
 
-    function getSelectedPrinciples() {
-      return Array.from(principlesSelect.selectedOptions)
-        .map(opt => principleByName.get(opt.value))
-        .filter(Boolean);
-    }
-
-    function renderSummary() {
-      const previousSummary = document.getElementById("processing-summary");
-      if (previousSummary) previousSummary.remove();
-
-      const totalModels = Object.keys(ALL_MODELS).length;
-      const failedModels = Array.from(modelStatuses.values()).filter(status => status === "failed").length;
-      const completedModels = Array.from(modelStatuses.values()).filter(status => status === "completed").length;
-      const successRate = Math.round((completedModels / totalModels) * 100);
-
-      const summaryDiv = document.createElement("div");
-      summaryDiv.id = "processing-summary";
-      summaryDiv.className = "mt-4 p-3 bg-blue-50 border border-blue-200 rounded text-blue-800";
-      appendText(summaryDiv, `Processing Summary: ${completedModels}/${totalModels} models completed successfully (${successRate}% success rate)`);
-      if (failedModels > 0) {
-        const note = document.createElement("small");
-        note.textContent = "Failed models can be retried individually using the Retry buttons above.";
-        summaryDiv.appendChild(note);
-      }
-      solutionTable.appendChild(summaryDiv);
-    }
-
-    document.getElementById("btn-solve").addEventListener("click", async () => {
-      const problem = document.getElementById("problem").value.trim();
-      const improve = getSelectedValues("improve");
-      const worsen = getSelectedValues("worsen");
-
-      if (!problem) {
-        alert("Please describe the problem (field 1 is mandatory).");
-        return;
-      }
-
-      const manualPrinciples = getSelectedPrinciples();
-
-      solutionTable.classList.remove("hidden");
-      solutionText.classList.add("hidden");
-      clearElement(solutionTableBody);
-      modelStatuses.clear();
-
-      const previousSummary = document.getElementById("processing-summary");
-      if (previousSummary) previousSummary.remove();
-
-      Object.entries(ALL_MODELS).forEach(([modelId, modelName]) => {
-        const row = document.createElement("tr");
-
-        const modelCell = row.insertCell();
-        modelCell.className = "border border-gray-300 p-2 font-medium";
-        modelCell.textContent = modelName;
-
-        const solutionCell = row.insertCell();
-        solutionCell.className = "border border-gray-300 p-2";
-        solutionCell.id = `solution-${modelId.replace(/[^a-zA-Z0-9]/g, '-')}`;
-        createLoading(solutionCell);
-
-        const statusCell = row.insertCell();
-        statusCell.className = "border border-gray-300 p-2";
-        statusCell.id = `status-${modelId.replace(/[^a-zA-Z0-9]/g, '-')}`;
-        setStatus(statusCell, "processing", "text-blue-600");
-        modelStatuses.set(modelId, "processing");
-
-        solutionTableBody.appendChild(row);
-      });
-
-      const queue = Object.entries(ALL_MODELS);
-      const concurrency = 2;
-      const workers = Array.from({ length: concurrency }, async () => {
-        while (queue.length > 0) {
-          const [modelId, modelName] = queue.shift();
-          await processModel(modelId, modelName, problem, improve, worsen, manualPrinciples);
-        }
-      });
-
-      await Promise.all(workers);
-      renderSummary();
+  try {
+    const res = await fetch(`${WORKER_ORIGIN}${path}`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(payload),
+      signal: controller.signal
     });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.error) {
+      throw new Error(data.error || `Request failed with status ${res.status}`);
+    }
+    return data;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+// ============================================================================
+// 9. UI Rendering Helpers for Results
+// ============================================================================
+
+function createLoadingCell(cell) {
+  clearElement(cell);
+  const wrapper = document.createElement("div");
+  wrapper.className = "flex items-center space-x-2";
+
+  const spinner = document.createElement("div");
+  spinner.className = "animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600";
+  wrapper.appendChild(spinner);
+
+  const label = document.createElement("span");
+  label.className = "text-gray-500 text-sm";
+  label.textContent = "Processing model...";
+  wrapper.appendChild(label);
+
+  cell.appendChild(wrapper);
+}
+
+function setStatusCell(statusCell, status) {
+  statusCell.dataset.status = status;
+  clearElement(statusCell);
+  const badge = document.createElement("span");
+  if (status === "completed") {
+    badge.className = "badge badge-ready";
+    badge.textContent = "Completed";
+  } else if (status === "failed") {
+    badge.className = "badge badge-blocked";
+    badge.textContent = "Failed";
+  } else {
+    badge.className = "badge badge-incomplete";
+    badge.textContent = "Processing";
+  }
+  statusCell.appendChild(badge);
+}
+
+function renderSolveError(cell, modelId, modelName, errorMessage) {
+  clearElement(cell);
+  const wrapper = document.createElement("div");
+  wrapper.className = "text-red-600 text-sm space-y-1";
+
+  const header = document.createElement("div");
+  header.className = "font-semibold";
+  header.textContent = "Request Failed";
+  wrapper.appendChild(header);
+
+  const details = document.createElement("div");
+  details.className = "text-xs text-gray-600";
+  details.textContent = errorMessage;
+  wrapper.appendChild(details);
+
+  cell.appendChild(wrapper);
+}
+
+function renderSolveResponse(cell, data) {
+  clearElement(cell);
+  const wrapper = document.createElement("div");
+  wrapper.className = "text-sm space-y-3 max-h-96 overflow-y-auto p-1";
+
+  // Selected principles
+  if (Array.isArray(data.selectedPrinciples) && data.selectedPrinciples.length > 0) {
+    const princDiv = document.createElement("div");
+    princDiv.innerHTML = '<strong>Selected Principles:</strong> ' +
+      data.selectedPrinciples.map((p) => `<span class="inline-block bg-blue-100 text-blue-800 text-xs px-2 py-0.5 rounded mr-1">#${p.id} ${p.name}</span>`).join(" ");
+    wrapper.appendChild(princDiv);
+  }
+
+  // Contradiction coverage
+  if (Array.isArray(data.contradictionCoverage) && data.contradictionCoverage.length > 0) {
+    const covDiv = document.createElement("div");
+    covDiv.innerHTML = "<strong>Contradiction Coverage:</strong>";
+    const covList = document.createElement("ul");
+    covList.className = "list-disc list-inside text-xs space-y-1 mt-1";
+    data.contradictionCoverage.forEach((c) => {
+      const li = document.createElement("li");
+      li.innerHTML = `<strong>${c.contradictionId}:</strong> addressed by [${(c.addressedByPrincipleIds || []).map((id) => `#${id}`).join(", ")}] — ${c.explanation || ""}`;
+      covList.appendChild(li);
+    });
+    covDiv.appendChild(covList);
+    wrapper.appendChild(covDiv);
+  }
+
+  // Principle application
+  if (Array.isArray(data.principleApplication) && data.principleApplication.length > 0) {
+    const appDiv = document.createElement("div");
+    appDiv.innerHTML = "<strong>Principle Application:</strong>";
+    const appList = document.createElement("ul");
+    appList.className = "list-disc list-inside text-xs space-y-1 mt-1";
+    data.principleApplication.forEach((pa) => {
+      const p = getPrincipleById(pa.principleId);
+      const name = p ? p.name : `Principle ${pa.principleId}`;
+      const li = document.createElement("li");
+      li.innerHTML = `<strong>#${pa.principleId} ${name}:</strong> ${pa.application || ""}`;
+      appList.appendChild(li);
+    });
+    appDiv.appendChild(appList);
+    wrapper.appendChild(appDiv);
+  }
+
+  // Solution text
+  if (data.solution) {
+    const solDiv = document.createElement("div");
+    solDiv.className = "bg-gray-50 p-2 border rounded";
+    solDiv.innerHTML = "<strong>Solution:</strong><br>" + data.solution.replace(/\n/g, "<br>");
+    wrapper.appendChild(solDiv);
+  }
+
+  // Validation badge
+  const valDiv = document.createElement("div");
+  valDiv.className = "text-xs pt-1 border-t";
+  if (data.validationStatus === "valid") {
+    valDiv.innerHTML = '<span class="text-green-600">✓ Deterministic Validation: PASS</span>';
+  } else if (data.validationStatus === "normalized") {
+    valDiv.innerHTML = '<span class="text-blue-600">ℹ Deterministic Validation: NORMALIZED</span>';
+  } else {
+    valDiv.innerHTML = `<span class="text-red-600">⚠ Deterministic Validation: FAILED (${(data.validationErrors || []).join("; ")})</span>`;
+  }
+  wrapper.appendChild(valDiv);
+
+  cell.appendChild(wrapper);
+}
+
+function renderIdentifyResponse(cell, data) {
+  clearElement(cell);
+  const wrapper = document.createElement("div");
+  wrapper.className = "text-sm space-y-3 max-h-96 overflow-y-auto p-1";
+
+  if (Array.isArray(data.contradictions) && data.contradictions.length > 0) {
+    data.contradictions.forEach((c, idx) => {
+      const card = document.createElement("div");
+      card.className = "bg-gray-50 p-2 border rounded space-y-1 text-xs";
+      card.innerHTML = `
+        <div class="font-semibold text-blue-800">Contradiction #${idx + 1}</div>
+        <div><strong>Improving:</strong> ${c.improvingAspect || ""} → <span class="bg-green-100 text-green-800 px-1 rounded">Parameter ${c.improvingParameter?.id}: ${c.improvingParameter?.name}</span></div>
+        <div><strong>Worsening:</strong> ${c.worseningAspect || ""} → <span class="bg-red-100 text-red-800 px-1 rounded">Parameter ${c.worseningParameter?.id}: ${c.worseningParameter?.name}</span></div>
+        ${c.evidence ? `<div><strong>Evidence:</strong> <em>${c.evidence}</em></div>` : ""}
+      `;
+      wrapper.appendChild(card);
+    });
+  } else {
+    const emptyMsg = document.createElement("div");
+    emptyMsg.className = "text-gray-500 italic text-xs";
+    emptyMsg.textContent = "No contradictions identified by this model.";
+    wrapper.appendChild(emptyMsg);
+  }
+
+  // Validation status
+  const valDiv = document.createElement("div");
+  valDiv.className = "text-xs pt-1 border-t";
+  if (data.validationStatus === "valid") {
+    valDiv.innerHTML = '<span class="text-green-600">✓ Deterministic Validation: PASS</span>';
+  } else if (data.validationStatus === "normalized") {
+    valDiv.innerHTML = '<span class="text-blue-600">ℹ Deterministic Validation: NORMALIZED</span>';
+  } else {
+    valDiv.innerHTML = `<span class="text-red-600">⚠ Validation: FAILED (${(data.validationErrors || []).join("; ")})</span>`;
+  }
+  wrapper.appendChild(valDiv);
+
+  cell.appendChild(wrapper);
+}
+
+// ============================================================================
+// 10. Task 1: Solution Generation Execution Flow
+// ============================================================================
+
+async function processSolveModel(modelId, modelName, payload) {
+  const cellId = `solve-sol-${modelId.replace(/[^a-zA-Z0-9]/g, "-")}`;
+  const statusId = `solve-stat-${modelId.replace(/[^a-zA-Z0-9]/g, "-")}`;
+  const solutionCell = document.getElementById(cellId);
+  const statusCell = document.getElementById(statusId);
+
+  createLoadingCell(solutionCell);
+  setStatusCell(statusCell, "processing");
+  modelStatuses.set(modelId, "processing");
+
+  const modelPayload = { ...payload, model: modelId };
+  const timestamp = new Date().toISOString();
+
+  try {
+    const data = await postJson("/solve", modelPayload);
+    renderSolveResponse(solutionCell, data);
+    setStatusCell(statusCell, "completed");
+    modelStatuses.set(modelId, "completed");
+
+    // Save research log
+    await saveLogEntry({
+      caseId: payload.caseId || null,
+      taskType: "solution_generation",
+      timestamp,
+      model: modelId,
+      provider: modelId.split("/")[0],
+      problemDefinitionType: "A",
+      problemDefinition: payload.problem,
+      sourceReportedContradictions: payload.contradictions,
+      selectionPolicy: payload.selectionPolicy,
+      requestedSeed: payload.seed,
+      reasoningEffort: "medium",
+      maxOutputTokens: 2500,
+      requestPayload: modelPayload,
+      parsedResponse: data,
+      validationStatus: data.validationStatus,
+      validationErrors: data.validationErrors || [],
+      researchMeta: data.researchMeta || null,
+      error: null
+    });
+  } catch (err) {
+    renderSolveError(solutionCell, modelId, modelName, err.message);
+    setStatusCell(statusCell, "failed");
+    modelStatuses.set(modelId, "failed");
+
+    // Save error log entry
+    await saveLogEntry({
+      caseId: payload.caseId || null,
+      taskType: "solution_generation",
+      timestamp,
+      model: modelId,
+      provider: modelId.split("/")[0],
+      problemDefinitionType: "A",
+      problemDefinition: payload.problem,
+      sourceReportedContradictions: payload.contradictions,
+      selectionPolicy: payload.selectionPolicy,
+      requestedSeed: payload.seed,
+      reasoningEffort: "medium",
+      maxOutputTokens: 2500,
+      requestPayload: modelPayload,
+      parsedResponse: null,
+      validationStatus: "failed",
+      validationErrors: [err.message],
+      researchMeta: null,
+      error: err.message
+    });
+  }
+}
+
+btnSolve.addEventListener("click", async () => {
+  const problem = problemATextarea.value.trim();
+  const contradictions = getSelectedContradictions();
+  const caseId = caseIdInput.value.trim();
+
+  // Validate seed
+  const rawSeed = seedInput.value.trim();
+  let seed = null;
+  if (rawSeed !== "") {
+    const parsed = Number(rawSeed);
+    if (!Number.isInteger(parsed) || parsed < 0) {
+      alert("Seed must be a non-negative integer or left blank.");
+      return;
+    }
+    seed = parsed;
+  }
+
+  if (!problem) {
+    alert("Please enter Problem Definition A.");
+    return;
+  }
+
+  if (contradictions.length === 0) {
+    alert("Please select parameters for at least one contradiction pair.");
+    return;
+  }
+
+  // Validate reference data completeness for case
+  const valResult = validateReferenceData(contradictions);
+  if (!valResult.case || !valResult.case.researchReady) {
+    alert("Solution Generation is disabled: required reference data for this case is incomplete.");
+    return;
+  }
+
+  const payload = {
+    caseId,
+    problem,
+    contradictions,
+    selectionPolicy,
+    seed
+  };
+
+  // Prepare UI
+  solveResults.classList.remove("hidden");
+  clearElement(solveResultsBody);
+  modelStatuses.clear();
+
+  Object.entries(ALL_MODELS).forEach(([modelId, modelName]) => {
+    const row = document.createElement("tr");
+
+    const modelCell = row.insertCell();
+    modelCell.className = "border border-gray-300 p-2 font-medium w-40";
+    modelCell.textContent = modelName;
+
+    const solCell = row.insertCell();
+    solCell.className = "border border-gray-300 p-2";
+    solCell.id = `solve-sol-${modelId.replace(/[^a-zA-Z0-9]/g, "-")}`;
+    createLoadingCell(solCell);
+
+    const statCell = row.insertCell();
+    statCell.className = "border border-gray-300 p-2 w-28";
+    statCell.id = `solve-stat-${modelId.replace(/[^a-zA-Z0-9]/g, "-")}`;
+    setStatusCell(statCell, "processing");
+
+    solveResultsBody.appendChild(row);
+  });
+
+  // Concurrency-2 execution queue
+  const queue = Object.entries(ALL_MODELS);
+  const concurrency = 2;
+  const workers = Array.from({ length: concurrency }, async () => {
+    while (queue.length > 0) {
+      const [modelId, modelName] = queue.shift();
+      await processSolveModel(modelId, modelName, payload);
+    }
+  });
+
+  await Promise.all(workers);
+});
+
+// ============================================================================
+// 11. Task 2: Contradiction Identification Execution Flow
+// ============================================================================
+
+async function processIdentifyModel(modelId, modelName, payload) {
+  const cellId = `id-cell-${modelId.replace(/[^a-zA-Z0-9]/g, "-")}`;
+  const statusId = `id-stat-${modelId.replace(/[^a-zA-Z0-9]/g, "-")}`;
+  const resultCell = document.getElementById(cellId);
+  const statusCell = document.getElementById(statusId);
+
+  createLoadingCell(resultCell);
+  setStatusCell(statusCell, "processing");
+
+  const modelPayload = { ...payload, model: modelId };
+  const timestamp = new Date().toISOString();
+
+  try {
+    const data = await postJson("/identify", modelPayload);
+    renderIdentifyResponse(resultCell, data);
+    setStatusCell(statusCell, "completed");
+
+    // Save research log
+    await saveLogEntry({
+      caseId: payload.caseId || null,
+      taskType: "contradiction_identification",
+      timestamp,
+      model: modelId,
+      provider: modelId.split("/")[0],
+      problemDefinitionType: "B",
+      problemDefinition: payload.problem,
+      sourceReportedContradictions: null,
+      selectionPolicy: null,
+      requestedSeed: payload.seed,
+      reasoningEffort: "medium",
+      maxOutputTokens: 2500,
+      requestPayload: modelPayload,
+      parsedResponse: data,
+      validationStatus: data.validationStatus,
+      validationErrors: data.validationErrors || [],
+      researchMeta: data.researchMeta || null,
+      error: null
+    });
+  } catch (err) {
+    renderSolveError(resultCell, modelId, modelName, err.message);
+    setStatusCell(statusCell, "failed");
+
+    // Save error log entry
+    await saveLogEntry({
+      caseId: payload.caseId || null,
+      taskType: "contradiction_identification",
+      timestamp,
+      model: modelId,
+      provider: modelId.split("/")[0],
+      problemDefinitionType: "B",
+      problemDefinition: payload.problem,
+      sourceReportedContradictions: null,
+      selectionPolicy: null,
+      requestedSeed: payload.seed,
+      reasoningEffort: "medium",
+      maxOutputTokens: 2500,
+      requestPayload: modelPayload,
+      parsedResponse: null,
+      validationStatus: "failed",
+      validationErrors: [err.message],
+      researchMeta: null,
+      error: err.message
+    });
+  }
+}
+
+btnIdentify.addEventListener("click", async () => {
+  const problem = problemBTextarea.value.trim();
+  const caseId = caseIdInput.value.trim();
+
+  // Validate seed
+  const rawSeed = seedInput.value.trim();
+  let seed = null;
+  if (rawSeed !== "") {
+    const parsed = Number(rawSeed);
+    if (!Number.isInteger(parsed) || parsed < 0) {
+      alert("Seed must be a non-negative integer or left blank.");
+      return;
+    }
+    seed = parsed;
+  }
+
+  if (!problem) {
+    alert("Please enter Problem Definition B.");
+    return;
+  }
+
+  const payload = {
+    caseId,
+    problem,
+    seed
+  };
+
+  // Prepare UI
+  identifyResults.classList.remove("hidden");
+  clearElement(identifyResultsBody);
+
+  Object.entries(ALL_MODELS).forEach(([modelId, modelName]) => {
+    const row = document.createElement("tr");
+
+    const modelCell = row.insertCell();
+    modelCell.className = "border border-gray-300 p-2 font-medium w-40";
+    modelCell.textContent = modelName;
+
+    const resCell = row.insertCell();
+    resCell.className = "border border-gray-300 p-2";
+    resCell.id = `id-cell-${modelId.replace(/[^a-zA-Z0-9]/g, "-")}`;
+    createLoadingCell(resCell);
+
+    const statCell = row.insertCell();
+    statCell.className = "border border-gray-300 p-2 w-28";
+    statCell.id = `id-stat-${modelId.replace(/[^a-zA-Z0-9]/g, "-")}`;
+    setStatusCell(statCell, "processing");
+
+    identifyResultsBody.appendChild(row);
+  });
+
+  // Concurrency-2 execution queue
+  const queue = Object.entries(ALL_MODELS);
+  const concurrency = 2;
+  const workers = Array.from({ length: concurrency }, async () => {
+    while (queue.length > 0) {
+      const [modelId, modelName] = queue.shift();
+      await processIdentifyModel(modelId, modelName, payload);
+    }
+  });
+
+  await Promise.all(workers);
+});
+
+// ============================================================================
+// 12. Research Log JSONL Export
+// ============================================================================
+
+btnExportJsonl.addEventListener("click", async () => {
+  const entries = await getAllLogEntries();
+  if (entries.length === 0) {
+    alert("No research log entries to export yet.");
+    return;
+  }
+
+  // Convert each entry to one JSON string line
+  const lines = entries.map((entry) => JSON.stringify(entry));
+  const content = lines.join("\n");
+
+  const blob = new Blob([content], { type: "application/x-jsonlines;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+
+  const a = document.createElement("a");
+  a.href = url;
+  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+  a.download = `triz-research-log-${timestamp}.jsonl`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+});
+
+// ============================================================================
+// 13. Application Initialization
+// ============================================================================
+
+function init() {
+  // Start with one initial contradiction row
+  addContradictionRow();
+  // Update log count display from IndexedDB
+  updateLogCountDisplay();
+}
+
+// Initialize when DOM is ready
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", init);
+} else {
+  init();
+}
