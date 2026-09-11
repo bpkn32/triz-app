@@ -22,7 +22,7 @@ import {
 } from "./triz-data.js";
 
 // Cloudflare Worker Origin
-const WORKER_ORIGIN = "https://cold-surf-b603.citetic.workers.dev";
+const WORKER_ORIGIN = "https://cold-surf-b603.berkpiskin-a.workers.dev";
 
 // Models used for parallel research runs
 const ALL_MODELS = {

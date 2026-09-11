@@ -285,9 +285,8 @@ function buildSolutionPrompt(problem, contradictions, candidatePrinciples, selec
   }
 
   userPrompt += `---\n\n`;
-  Select a coherent subset of the provided candidate principles that is sufficient to adequately address every supplied contradiction.Prefer fewer principles when a smaller subset provides equally complete and technically coherent coverage.Do not use additional principles merely because they are available.However, do not sacrifice contradiction coverage, solution coherence, or technical adequacy simply to reduce the number of principles.Use all provided candidate principles if they are genuinely necessary
   if (selectionPolicy === "parsimonious") {
-    userPrompt += `Selection Policy:\n.\n\n`;
+    userPrompt += `Selection Policy:\nSelect a coherent subset of the provided candidate principles that is sufficient to adequately address every supplied contradiction. Prefer fewer principles when a smaller subset provides equally complete and technically coherent coverage. Do not use additional principles merely because they are available. However, do not sacrifice contradiction coverage, solution coherence, or technical adequacy simply to reduce the number of principles. Use all provided candidate principles if they are genuinely necessary.\n\n`;
   } else if (selectionPolicy === "minimal") {
     userPrompt += `Selection Policy:\nAim to adequately address every supplied contradiction using the smallest reasonably sufficient subset of the provided candidate principles. A single principle may address multiple contradictions. Add another principle only when the currently selected subset cannot adequately address one or more remaining contradictions. Never leave a contradiction insufficiently addressed merely to reduce the principle count.\n\n`;
   }
