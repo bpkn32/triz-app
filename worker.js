@@ -251,6 +251,13 @@ async function callOpenRouter(env, model, systemPrompt, userPrompt, opts = {}) {
   });
 
   if (!response.ok) {
+    const bodyText = await response.text().catch(() => "");
+    console.error("openrouter_request_failed", {
+      status: response.status,
+      body: bodyText.slice(0, 500),
+      keyPresent: Boolean(env.OPENROUTER_API_KEY),
+      keyLength: env.OPENROUTER_API_KEY ? env.OPENROUTER_API_KEY.length : 0
+    });
     if (response.status === 429) throw new HttpError(429, "provider_rate_limited", "The model provider is rate limited. Please retry later.");
     if (response.status === 401) throw new HttpError(502, "provider_auth_failed", "The model provider rejected authentication.");
     throw new HttpError(502, "provider_error", "The model provider could not complete the request.");
