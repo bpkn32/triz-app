@@ -12,6 +12,6 @@
     { "tag": "v1", "new_sqlite_classes": ["RateLimiter"] }
   ],
   "vars": {
-    "ALLOWED_ORIGINS": "https://citetic.com"
+    "ALLOWED_ORIGINS": "https://citetic.com,https://triz-app-frontend.pages.dev"
   }
 }
