@@ -38,7 +38,6 @@ const ALL_MODELS = {
 
 const caseIdInput = document.getElementById("case-id");
 const seedInput = document.getElementById("seed");
-const apiTokenInput = document.getElementById("api-token");
 
 const tabBtnSolve = document.getElementById("tab-btn-solve");
 const tabBtnIdentify = document.getElementById("tab-btn-identify");
@@ -76,12 +75,6 @@ let contradictionRows = []; // [{ id: "C1", improvingId: 0, worseningId: 0 }]
 let rowCounter = 0;
 let selectionPolicy = "parsimonious"; // "parsimonious" | "minimal"
 let modelStatuses = new Map();
-
-// API Token handling via sessionStorage
-apiTokenInput.value = sessionStorage.getItem("triz-api-token") || "";
-apiTokenInput.addEventListener("input", () => {
-  sessionStorage.setItem("triz-api-token", apiTokenInput.value.trim());
-});
 
 // ============================================================================
 // 3. IndexedDB Persistent Research Logging
@@ -404,8 +397,6 @@ async function postJson(path, payload, timeoutMs = 120000) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   const headers = { "Content-Type": "application/json" };
-  const apiToken = apiTokenInput.value.trim();
-  if (apiToken) headers["x-triz-api-token"] = apiToken;
 
   try {
     const res = await fetch(`${WORKER_ORIGIN}${path}`, {
